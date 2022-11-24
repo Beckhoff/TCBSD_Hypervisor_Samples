@@ -1,0 +1,141 @@
+#!/bin/sh
+# SPDX-License-Identifier: 0BSD
+# Copyright (C) 2022 Beckhoff Automation GmbH & Co. KG
+
+set -e
+set -u
+
+usage() {
+	cat >&2 << EOF
+USAGE: ${0##*/} [COMMAND]
+
+Control the virtual machine environment named '${vm_name}'
+
+COMMANDS:
+    start       Start the VM
+    stop        Shutdown the running VM
+    help        Print this help message
+
+EXAMPLES
+# run the virual machine
+${0##*/} start
+
+# shutdown the virtual machine
+${0##*/} stop
+
+EOF
+}
+
+# Cleanup any resources used by the VM after shutdown
+cleanup() {
+	# do not trap during cleanup procedure
+	trap '' EXIT
+	set +e
+	set +u
+
+	pfctl -a "bhf/bhyve/${vm_name}" -f /dev/null > /dev/null 2>&1
+	if test -e "${temp_firewall_rules}"; then
+		rm "${temp_firewall_rules}"
+	fi
+}
+
+prepare_host() {
+	# Ensure that kernel modul vmm.ko is loaded
+	kldload -n vmm.ko
+
+	# accept incoming VNC connections
+	temp_firewall_rules="/etc/pf.conf.d/${vm_name}"
+	printf "pass in quick proto tcp to port %s\n" "${vm_vnc_port}" > "${temp_firewall_rules}"
+	pfctl -a bhf/bhyve/"${vm_name}" -f "${temp_firewall_rules}"
+}
+
+# Setups the VM environment and actually executes the bhyve process
+run_vm() {
+	trap 'cleanup' EXIT
+
+	prepare_host
+
+	while true; do
+
+		if test -e "/dev/vmm/${vm_name}"; then
+			bhyvectl --vm="${vm_name}" --destroy
+		fi
+
+		_bhyve_rc=0
+		bhyve \
+			-A -H -P -w \
+			-c sockets=1,cores=1,threads=1 \
+			-m 2G \
+			-l bootrom,/usr/local/share/uefi-firmware/BHYVE_BHF_UEFI.fd \
+			-s 0,hostbridge \
+			-s 2,fbuf,rfb=0.0.0.0:"${vm_vnc_port}",w=1280,h=1024 \
+			-s 3,xhci,tablet \
+			-s 31,lpc \
+			"${vm_name}" || _bhyve_rc=$?
+
+		if test "${_bhyve_rc}" -ne 0; then
+			break
+		fi
+
+	done
+}
+
+shutdown_vm() {
+	# do not trap on exit during shutdown command
+	trap '' EXIT
+	set +e
+	set +u
+
+	kill "${_pid}"
+}
+
+get_bhyve_pid() {
+	printf "%s" "$(pgrep -f "bhyve: ${vm_name}")"
+}
+
+# Execution of virtual machines requires root previleges
+if test "$(id -u)" -ne 0; then
+	printf "%s must be run as root\n" "${0##*/}"
+	exit 1
+fi
+
+# Default values for VM configuration
+readonly vm_name="samplevm"
+readonly vm_vnc_port="5900"
+readonly _cmd="${1?Error: No COMMAND specified$(usage)}"
+
+_pid="$(get_bhyve_pid)"
+case "${_cmd}" in
+	start)
+		if test -z "${_pid:+x}"; then
+			run_vm
+		else
+			printf "%s is already running with pid: %s\n" "${vm_name}" "${_pid}"
+			exit 1
+		fi
+		;;
+
+	stop)
+		if ! test -z "${_pid:+x}"; then
+			shutdown_vm
+		fi
+		;;
+
+	status)
+		if ! test -z "${_pid:+x}"; then
+			printf "'%s' is running with pid: %s\n" "${vm_name}" "${_pid}"
+		else
+			printf "'%s' is not running.\n" "${vm_name}"
+		fi
+		;;
+
+	-h | --help | help)
+		usage
+		;;
+
+	*)
+		usage
+		printf "Unknown COMMAND: '%s'\n" "${_cmd}"
+		exit 1
+		;;
+esac

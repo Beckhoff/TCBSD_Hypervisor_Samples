@@ -1,0 +1,24 @@
+#!/bin/sh
+# SPDX-License-Identifier: 0BSD
+# Copyright (C) 2019 - 2022 Beckhoff Automation GmbH & Co. KG
+
+# PROVIDE: samplevm
+# REQUIRE: DAEMON NETWORKING dmesg
+# BEFORE: LOGIN TcSystemService
+# KEYWORD: nojail shutdown
+
+. /etc/rc.subr
+
+name="samplevm"
+rcvar="${name}_enable"
+
+command="/usr/local/bin/${name}"
+
+export PATH="${PATH}:/usr/local/bin:/usr/local/sbin"
+
+start_cmd="${command} start > /dev/null 2>&1 &"
+stop_cmd="${command} stop > /dev/null 2>&1 &"
+status_cmd="${command} status"
+
+load_rc_config "${name}"
+run_rc_command "$1"

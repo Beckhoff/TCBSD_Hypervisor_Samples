@@ -1,0 +1,50 @@
+#!/bin/sh
+# SPDX-License-Identifier: 0BSD
+# Copyright (C) 2022 Beckhoff Automation GmbH & Co. KG
+
+set -e
+set -u
+
+# root permissions are required to run VMs
+if test "$(id -u)" -ne 0; then
+	printf "%s must be run as root\n" "${0##*/}"
+	exit 1
+fi
+
+# Default values for VM configuration
+readonly vm_name="samplevm"
+
+# Ensure that kernel modul vmm.ko is loaded
+kldload -n vmm.ko
+
+while true; do
+	# destroy former VM instance to ensure we start
+	# with a clean VM configuration
+	if test -e "/dev/vmm/${vm_name}"; then
+		bhyvectl --vm="${vm_name}" --destroy
+	fi
+
+	# start a simple UEFI based VM instance
+	_bhyve_rc=0
+	bhyve \
+		-A -H -P \
+		-c sockets=1,cores=1,threads=1 \
+		-m 1G \
+		-s 0:0,hostbridge \
+		-l bootrom,/usr/local/share/uefi-firmware/BHYVE_BHF_UEFI.fd \
+		-l com1,stdio \
+		-s 31:0,lpc \
+		"${vm_name}"
+	_bhyve_rc=$?
+
+	# according to bhyve man pages the return codes indicates
+	# how the VM was terminated:
+	# 0: rebooted
+	# 1: powered off
+	if test "${_bhyve_rc}" -ne 0; then
+		printf "bhyve exited with return code: %s\n" "${_bhyve_rc}"
+		break
+	fi
+	printf "Restarting %s\n" "${vm_name}"
+
+done
