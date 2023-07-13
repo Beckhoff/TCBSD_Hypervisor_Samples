@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: 0BSD
-# Copyright (C) 2022 Beckhoff Automation GmbH & Co. KG
+# Copyright (C) 2023 Beckhoff Automation GmbH & Co. KG
 
 set -e
 set -u
@@ -66,7 +66,7 @@ run_vm() {
 			-A -H -P -w \
 			-c sockets=1,cores=1,threads=1 \
 			-m 2G \
-			-l bootrom,/usr/local/share/uefi-firmware/BHYVE_BHF_UEFI.fd \
+			-l bootrom,/usr/local/share/uefi-firmware/BHYVE_BHF_UEFI.fd,fwcfg=qemu \
 			-s 0,hostbridge \
 			-s 2,fbuf,rfb=0.0.0.0:"${vm_vnc_port}",w=1280,h=1024 \
 			-s 3,xhci,tablet \

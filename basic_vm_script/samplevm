@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: 0BSD
-# Copyright (C) 2022 Beckhoff Automation GmbH & Co. KG
+# Copyright (C) 2023 Beckhoff Automation GmbH & Co. KG
 
 set -e
 set -u
@@ -31,7 +31,7 @@ while true; do
 		-c sockets=1,cores=1,threads=1 \
 		-m 1G \
 		-s 0:0,hostbridge \
-		-l bootrom,/usr/local/share/uefi-firmware/BHYVE_BHF_UEFI.fd \
+		-l bootrom,/usr/local/share/uefi-firmware/BHYVE_BHF_UEFI.fd,fwcfg=qemu \
 		-l com1,stdio \
 		-s 31:0,lpc \
 		"${vm_name}"
